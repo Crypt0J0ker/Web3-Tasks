@@ -1,5 +1,4 @@
 const { ethers } = require('ethers')
-
 require('dotenv').config()
 
 const INFURA_API_KEY = process.env.INFURA_API_KEY
@@ -7,13 +6,9 @@ const INFURA_API_KEY = process.env.INFURA_API_KEY
 const SUSHI_SWAP_CONTRACT_ADDRESS = '0xb5915995366e0331b95107fc6e80beec44bcd0bb'
 const SUSHI_SWAP_ABI = require('../constants/SushiSwapABI.json')
 
-const provider = new ethers.WebSocketProvider(
-  `wss://polygon-mainnet.infura.io/ws/v3/${INFURA_API_KEY}`
+const provider = new ethers.JsonRpcProvider(
+  `https://polygon-mainnet.infura.io/v3/${INFURA_API_KEY}`
 )
-
-// const provider = new ethers.JsonRpcProvider(
-//   `https://polygon-mainnet.infura.io/v3/${INFURA_API_KEY}`
-// )
 
 const sushiSwapContract = new ethers.Contract(
   SUSHI_SWAP_CONTRACT_ADDRESS,
@@ -26,16 +21,42 @@ const filter = {
   topics: [
     ethers.id('Swap(address,address,int256,int256,uint160,uint128,int24)'),
   ],
-  fromBlock: 'latest',
+  fromBlock: 57735447,
+  toBlock: 'latest',
 }
 
-console.log('Listening for Swap events...')
+const userAddress = '0xE55cb377EF32e69cEdF38FC536e844E761E82E88'
 
-provider.on(filter, log => {
-  const parsedLog = sushiSwapContract.interface.parseLog(log)
-  const { sender, recipient, amount0, amount1 } = parsedLog.args
+async function checkUserSwaps() {
+  try {
+    console.log('Fetching Swap events...')
+    const logs = await provider.getLogs(filter)
+    console.log(`Fetched ${logs.length} events.`)
 
-  if (amount0 && amount0.gte(ethers.BigNumber.from('1000000000000000000'))) {
-    console.log(`User ${recipient} swapped`)
+    const parsedLogs = logs.map(log =>
+      sushiSwapContract.interface.parseLog(log)
+    )
+    const userSwaps = parsedLogs.filter(
+      log =>
+        log.args.recipient.toLowerCase() === userAddress.toLowerCase() &&
+        log.args.amount0.toString() >= '1000000000000000000'
+    )
+
+    if (userSwaps.length > 0) {
+      console.log(`User ${userAddress} participated in the following swaps:`)
+      userSwaps.forEach((log, index) => {
+        console.log(`Swap ${index + 1}:`)
+        console.log(`Sender: ${log.args.sender}`)
+        console.log(`Recipient: ${log.args.recipient}`)
+        console.log(`Amount0: ${log.args.amount0.toString()}`)
+        console.log(`Amount1: ${log.args.amount1.toString()}`)
+      })
+    } else {
+      console.log(`User ${userAddress} did not participate in any swaps.`)
+    }
+  } catch (error) {
+    console.error('Error fetching logs:', error)
   }
-})
+}
+
+checkUserSwaps()
